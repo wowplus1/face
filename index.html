@@ -35,7 +35,12 @@
         header h1 { font-size: 20px; font-weight: 700; color: var(--text-main); margin-bottom: 4px; }
         header p { font-size: 13px; color: var(--text-sub); }
         
-        /* 업로드 영역: 원본 비율 유지 설정 */
+        /* [복원] API 키 수동 입력 칸 스타일 */
+        .api-box { background: rgba(0,0,0,0.2); padding: 12px; border-radius: 12px; margin-bottom: 16px; border: 1px solid #334155; }
+        .api-box input { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #475569; background: #0f172a; color: #fff; font-size: 13px; text-align: center; }
+        .api-box input::placeholder { color: #64748b; }
+        
+        /* 업로드 영역: 원본 비율 유지 (contain) */
         .upload-area {
             border: 2px dashed #334155;
             border-radius: 16px;
@@ -88,7 +93,7 @@
         
         .result-box { display: none; margin-top: 16px; background: rgba(0,0,0,0.2); padding: 16px; border-radius: 16px; border: 1px solid #334155; }
         
-        /* 결과 화면 이미지 전체 노출 설정 */
+        /* 결과 화면 이미지 전체 노출 (contain) */
         .result-image {
             width: 100%;
             display: flex;
@@ -127,7 +132,7 @@
         }
         .hospital-banner:active { transform: scale(0.98); }
         
-        /* 순위별 배너 그라데이션 차별화 */
+        /* 순위별 디자인 차별화 */
         .rank-1 { background: linear-gradient(135deg, #059669, #10b981); color: #0f172a; }
         .rank-2 { background: linear-gradient(135deg, #1e293b, #334155); color: #f8fafc; border: 1px solid #475569; }
         .rank-3 { background: linear-gradient(135deg, #0f172a, #1e293b); color: #94a3b8; border: 1px solid #334155; }
@@ -143,6 +148,10 @@
         <h1>✨ AI 관상 성형 매칭 테스트</h1>
         <p>사진을 올리면 제미나이 3.5 Flash가 실시간 분석합니다.</p>
     </header>
+
+    <div class="api-box" id="apiBox">
+        <input type="password" id="apiKey" placeholder="🔑 여기에 구글 Gemini API Key 입력">
+    </div>
 
     <div class="upload-area" id="uploadArea" onclick="document.getElementById('fileInput').click()">
         <div class="upload-placeholder" id="placeholder">
@@ -186,8 +195,6 @@
 </div>
 
 <script>
-    // [보안 안내] 내부 프로토타입 시연용으로 API 키를 안전하게 내장했습니다.
-    const GEMINI_API_KEY = "AIzaSyA1Mb-_8IvecOeeUdNwghV3JghDK0GBw1o";
     let base64Image = "";
 
     function handleImage(input) {
@@ -205,6 +212,14 @@
     }
 
     async function analyzeFace() {
+        // [복원] 입력칸에서 API 키 가져오기 및 유효성 체크
+        const apiKey = document.getElementById('apiKey').value.trim();
+        if (!apiKey) {
+            alert("⚠️ 위 입력창에 구글 Gemini API Key를 입력해주세요!");
+            return;
+        }
+
+        document.getElementById('apiBox').style.display = 'none'; // 분석 시작 시 입력칸 숨김
         document.getElementById('uploadArea').style.display = 'none';
         document.getElementById('analyzeBtn').style.display = 'none';
         document.getElementById('loading').style.display = 'block';
@@ -214,7 +229,8 @@
         
         document.getElementById('finalPreview').src = document.getElementById('preview').src;
 
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+        // 입력받은 API 키를 URL 엔드포인트에 동적 바인딩
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${apiKey}`;
 
         const promptText = `
         [Role & Persona]
@@ -250,34 +266,41 @@
             const response = await fetch(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
+                // [최적화] 비용 방어 및 정확도 향상을 위한 System Instruction 매립 연동 구조
                 body: JSON.stringify({
+                    systemInstruction: {
+                        parts: [{ text: promptText }]
+                    },
                     contents: [{
                         parts: [
-                            { text: promptText },
                             { inlineData: { mimeType: "image/jpeg", data: base64Image } }
                         ]
                     }]
                 })
             });
 
-            // 구글 무료 호출 한도 초과(1분당 15회) 체크 로직 추가
+            // 1분당 15회 제한(429 에러) 감지 로직
             if (response.status === 429) {
                 alert("⏱️ 무료 테스트 호출 한도 초과! (1분당 15회 제한)\n정확히 1분 뒤에 다시 사진을 올려주시면 바로 작동합니다.");
-                document.getElementById('analyzeBtn').style.display = 'block';
-                document.getElementById('uploadArea').style.display = 'flex';
+                showInitialUI();
                 return;
             }
 
             const data = await response.json();
-            const aiResponse = data.candidates[0].content.parts[0].text;
 
+            // 구글 서버가 뱉어낸 진짜 에러 역추적 팝업
+            if (data.error) {
+                alert("🚨 구글 API 에러 발생!\n메시지: " + data.error.message + "\n코드: " + data.error.code + "\n\n*팁: 깃허브 공개 배너에 키가 노출되어 구글이 폭파시켰을 확률이 높으니 새 키를 입력해 주세요.");
+                showInitialUI();
+                return;
+            }
+
+            const aiResponse = data.candidates[0].content.parts[0].text;
             displayResult(aiResponse);
 
         } catch (error) {
-            alert("분석 중 오류가 발생했습니다. 네트워크 상태를 확인해주세요.");
-            console.error(error);
-            document.getElementById('analyzeBtn').style.display = 'block';
-            document.getElementById('uploadArea').style.display = 'flex';
+            alert("앱 내부 연동 에러: " + error.message);
+            showInitialUI();
         } finally {
             document.getElementById('loading').style.display = 'none';
         }
@@ -310,11 +333,18 @@
             console.error("랭킹 파싱 오류 발생, 기본 순서로 배너를 출력합니다.", e);
             document.getElementById('title1').innerText = `🥇 1순위 추천 | ${hospitalData['코필러']}`;
             document.getElementById('title2').innerText = `🥈 2순위 추천 | ${hospitalData['눈매교정']}`;
-            document.getElementById('title3').innerText = `🥉 3순위 추천 | ${hospitalData['윤곽주as']}`;
+            document.getElementById('title3').innerText = `🥉 3순위 추천 | ${hospitalData['윤곽주사']}`;
             document.getElementById('bannerContainer').style.display = 'block';
         }
 
         document.getElementById('resetBtn').style.display = 'block';
+    }
+
+    // UI 복원 공통 함수
+    function showInitialUI() {
+        document.getElementById('apiBox').style.display = 'block';
+        document.getElementById('uploadArea').style.display = 'flex';
+        document.getElementById('analyzeBtn').style.display = 'block';
     }
 
     function resetApp() {
@@ -325,8 +355,7 @@
         document.getElementById('finalPreview').src = ""; 
         document.getElementById('placeholder').style.display = 'block';
         
-        document.getElementById('uploadArea').style.display = 'flex';
-        document.getElementById('analyzeBtn').style.display = 'block';
+        showInitialUI();
         document.getElementById('analyzeBtn').disabled = true; 
         document.getElementById('resultBox').style.display = 'none';
         document.getElementById('bannerContainer').style.display = 'none';
