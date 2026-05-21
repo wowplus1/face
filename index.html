@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>AI 관상 성형 매칭 프로토타입</title>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --card-bg: #1e293b;
+            --accent: #10b981; 
+            --text-main: #f8fafc;
+            --text-sub: #94a3b8;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: start;
+            min-height: 100vh;
+            padding: 16px;
+        }
+        .phone-container {
+            width: 100%;
+            max-width: 412px;
+            background: var(--card-bg);
+            border-radius: 24px;
+            padding: 24px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+        }
+        header { text-align: center; margin-bottom: 24px; }
+        header h1 { font-size: 20px; font-weight: 700; color: var(--text-main); margin-bottom: 4px; }
+        header p { font-size: 13px; color: var(--text-sub); }
+        
+        /* 업로드 영역: 원본 비율 유지 설정 */
+        .upload-area {
+            border: 2px dashed #334155;
+            border-radius: 16px;
+            height: 220px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            overflow: hidden;
+            position: relative;
+            margin-bottom: 16px;
+            background: rgba(0,0,0,0.3);
+        }
+        .upload-area img {
+            width: auto;
+            height: 100%;
+            max-width: 100%;
+            object-fit: contain;
+            display: none;
+        }
+        .upload-placeholder { text-align: center; color: var(--text-sub); font-size: 14px; }
+        .upload-placeholder span { font-size: 32px; display: block; margin-bottom: 8px; }
+        
+        button {
+            width: 100%;
+            background: var(--accent);
+            color: #0f172a;
+            border: none;
+            padding: 14px;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .btn-secondary {
+            display: none;
+            margin-top: 20px;
+            background: #334155;
+            color: var(--text-main);
+            border: 1px solid #475569;
+        }
+        
+        .loading { display: none; text-align: center; margin: 20px 0; color: var(--accent); font-weight: 500; font-size: 14px; }
+        .loading-spinner { border: 3px solid #334155; border-top: 3px solid var(--accent); border-radius: 50%; width: 24px; height: 24px; animation: spin 1s linear infinite; margin: 0 auto 8px; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        .result-box { display: none; margin-top: 16px; background: rgba(0,0,0,0.2); padding: 16px; border-radius: 16px; border: 1px solid #334155; }
+        
+        /* 결과 화면 이미지 전체 노출 설정 */
+        .result-image {
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-bottom: 16px;
+            border-radius: 12px;
+            overflow: hidden;
+            background: rgba(0,0,0,0.3);
+        }
+        .result-image img {
+            width: auto;
+            height: auto;
+            max-width: 100%;
+            max-height: 260px;
+            object-fit: contain;
+        }
+
+        .result-text { font-size: 14px; line-height: 1.6; white-space: pre-line; }
+        
+        /* 추천 병원 복수 배너 컨테이너 */
+        .banner-container {
+            display: none;
+            margin-top: 20px;
+        }
+        .hospital-banner {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            margin-bottom: 10px;
+            padding: 14px 16px;
+            border-radius: 12px;
+            text-decoration: none;
+            font-weight: 700;
+            transition: transform 0.1s;
+        }
+        .hospital-banner:active { transform: scale(0.98); }
+        
+        /* 순위별 배너 그라데이션 차별화 */
+        .rank-1 { background: linear-gradient(135deg, #059669, #10b981); color: #0f172a; }
+        .rank-2 { background: linear-gradient(135deg, #1e293b, #334155); color: #f8fafc; border: 1px solid #475569; }
+        .rank-3 { background: linear-gradient(135deg, #0f172a, #1e293b); color: #94a3b8; border: 1px solid #334155; }
+
+        .hospital-banner h4 { font-size: 15px; margin-bottom: 2px; }
+        .hospital-banner p { font-size: 12px; font-weight: 500; opacity: 0.8; }
+    </style>
+</head>
+<body>
+
+<div class="phone-container">
+    <header>
+        <h1>✨ AI 관상 성형 매칭 테스트</h1>
+        <p>사진을 올리면 제미나이 3.5 Flash가 실시간 분석합니다.</p>
+    </header>
+
+    <div class="upload-area" id="uploadArea" onclick="document.getElementById('fileInput').click()">
+        <div class="upload-placeholder" id="placeholder">
+            <span>📷</span>
+            내 얼굴 사진 올리기 (촬영/갤러리)
+        </div>
+        <img id="preview" alt="선택된 이미지">
+    </div>
+    <input type="file" id="fileInput" accept="image/*" style="display: none;" onchange="handleImage(this)">
+
+    <button id="analyzeBtn" onclick="analyzeFace()" disabled>AI 관상 분석 시작</button>
+
+    <div class="loading" id="loading">
+        <div class="loading-spinner"></div>
+        AI가 관상학 지식을 기반으로 우선순위를 분석 중입니다...
+    </div>
+
+    <div class="result-box" id="resultBox">
+        <div class="result-image">
+            <img id="finalPreview" alt="최종 분석 사진">
+        </div>
+        <div class="result-text" id="resultText"></div>
+    </div>
+
+    <div class="banner-container" id="bannerContainer">
+        <a href="https://www.gangnamunni.com/" class="hospital-banner rank-1" id="banner1" target="_blank">
+            <h4 id="title1">🥇 1순위 추천 병원</h4>
+            <p>특가 이벤트 확인하고 예약하기 👉</p>
+        </a>
+        <a href="https://www.gangnamunni.com/" class="hospital-banner rank-2" id="banner2" target="_blank">
+            <h4 id="title2">🥈 2순위 추천 병원</h4>
+            <p>맞춤형 시술 정보 보러가기 👉</p>
+        </a>
+        <a href="https://www.gangnamunni.com/" class="hospital-banner rank-3" id="banner3" target="_blank">
+            <h4 id="title3">🥉 3순위 추천 병원</h4>
+            <p>추천 후기 및 가격 비교 👉</p>
+        </a>
+    </div>
+
+    <button id="resetBtn" class="btn-secondary" onclick="resetApp()">다시 분석하기 ↺</button>
+</div>
+
+<script>
+    // [보안 안내] 내부 프로토타입 시연용으로 API 키를 안전하게 내장했습니다.
+    const GEMINI_API_KEY = "AIzaSyA1Mb-_8IvecOeeUdNwghV3JghDK0GBw1o";
+    let base64Image = "";
+
+    function handleImage(input) {
+        if (input.files && input.files[0]) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                document.getElementById('preview').src = e.target.result;
+                document.getElementById('preview').style.display = 'block';
+                document.getElementById('placeholder').style.display = 'none';
+                base64Image = e.target.result.split(',')[1]; 
+                document.getElementById('analyzeBtn').disabled = false;
+            };
+            reader.readAsDataURL(input.files[0]);
+        }
+    }
+
+    async function analyzeFace() {
+        document.getElementById('uploadArea').style.display = 'none';
+        document.getElementById('analyzeBtn').style.display = 'none';
+        document.getElementById('loading').style.display = 'block';
+        document.getElementById('resultBox').style.display = 'none';
+        document.getElementById('bannerContainer').style.display = 'none';
+        document.getElementById('resetBtn').style.display = 'none';
+        
+        document.getElementById('finalPreview').src = document.getElementById('preview').src;
+
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+
+        const promptText = `
+        [Role & Persona]
+        너는 강남의 유명 성형외과들과 협업하며 과학적 상학(인상학)을 연구하는 '2030 트렌디 뷰티 관상가'이다. 세련되고 긍정적인 어조(~해요, ~죠)와 적절한 이모지를 사용하여 매력적인 풀이를 제공하라.
+
+        [Analysis & Ranking Rule]
+        업로드된 사진의 눈, 코, 얼굴 라인을 모두 종합적으로 분석한 뒤, 관상학적 보완이 시급한 순서와 성형학적 개선 효과가 큰 순서를 고려하여 [코필러], [눈매교정], [윤곽주사] 3가지 시술의 우선순위(1순위~3순위)를 매겨야 한다. 
+        사진마다 인상을 정밀하게 판별하여, 어떤 사진은 눈매교정이 1순위가 되고, 어떤 사진은 윤곽주사나 코필러가 1순위가 되도록 유동적이고 정교하게 순위를 배치하라. 특정 시술만 1등으로 몰리지 않게 할 것.
+
+        [Strict Constraints]
+        - 절대 외모 비하 단어는 사용 금지. 단점은 "2%만 채우면 대박 날 상"과 같이 희망적인 마케팅 언어로 순화할 것.
+        - 답변의 맨 마지막 줄에는 시스템(개발 코드)이 순위를 인식할 수 있도록 반드시 지정된 포맷의 [RANK_START]와 [RANK_END] 사이에 순위 태그를 한 줄씩 출력할 것. 다른 텍스트를 절대 섞지 말 것.
+
+        [Output Format]
+        ✨ [얼굴 전체를 관통하는 핵심 관상 평 한 줄 요약]
+
+        💰 종합 관상 풀이 (눈/코/하관 통합):
+        (유저의 상에서 느껴지는 대박 운세와 매력 포인트를 4~5줄로 풍부하게 풀이)
+
+        💡 복을 부르는 성형학적 우선순위 처방전:
+        - 🥇 1순위 추천: (1순위로 선정된 시술명)을 해야 하는 관상학적 이유와 성형 효과 설명
+        - 🥈 2순위 추천: (2순위로 선정된 시술명)을 해야 하는 관상학적 이유와 성형 효과 설명
+        - 🥉 3순위 추천: (3순위로 선정된 시술명)을 해야 하는 관상학적 이유와 성형 효과 설명
+
+        [RANK_START]
+        1등:[시술명]
+        2등:[시술명]
+        3등:[시술명]
+        [RANK_END]
+        `;
+
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{
+                        parts: [
+                            { text: promptText },
+                            { inlineData: { mimeType: "image/jpeg", data: base64Image } }
+                        ]
+                    }]
+                })
+            });
+
+            // 구글 무료 호출 한도 초과(1분당 15회) 체크 로직 추가
+            if (response.status === 429) {
+                alert("⏱️ 무료 테스트 호출 한도 초과! (1분당 15회 제한)\n정확히 1분 뒤에 다시 사진을 올려주시면 바로 작동합니다.");
+                document.getElementById('analyzeBtn').style.display = 'block';
+                document.getElementById('uploadArea').style.display = 'flex';
+                return;
+            }
+
+            const data = await response.json();
+            const aiResponse = data.candidates[0].content.parts[0].text;
+
+            displayResult(aiResponse);
+
+        } catch (error) {
+            alert("분석 중 오류가 발생했습니다. 네트워크 상태를 확인해주세요.");
+            console.error(error);
+            document.getElementById('analyzeBtn').style.display = 'block';
+            document.getElementById('uploadArea').style.display = 'flex';
+        } finally {
+            document.getElementById('loading').style.display = 'none';
+        }
+    }
+
+    const hospitalData = {
+        '코필러': '🏥 [강남] 코끝 완벽 고정, 입체 코필러 패키지 특가 4.9만원',
+        '눈매교정': '🏥 [신사] 졸린 눈 안녕, 비절개 눈매교정 명의 매칭',
+        '윤곽주사': '💡 [압구정] 달걀형 턱선 완성, 고농축 윤곽주사 3회권 이벤트'
+    };
+
+    function displayResult(text) {
+        document.getElementById('resultBox').style.display = 'block';
+        
+        const mainText = text.split('[RANK_START]')[0];
+        document.getElementById('resultText').innerText = mainText;
+
+        try {
+            const rankSection = text.split('[RANK_START]')[1].split('[RANK_END]')[0];
+            const rank1 = rankSection.match(/1등:\[(.*?)\]/)[1].trim();
+            const rank2 = rankSection.match(/2등:\[(.*?)\]/)[1].trim();
+            const rank3 = rankSection.match(/3등:\[(.*?)\]/)[1].trim();
+
+            document.getElementById('title1').innerText = `🥇 1순위 추천 | ${hospitalData[rank1] || rank1}`;
+            document.getElementById('title2').innerText = `🥈 2순위 추천 | ${hospitalData[rank2] || rank2}`;
+            document.getElementById('title3').innerText = `🥉 3순위 추천 | ${hospitalData[rank3] || rank3}`;
+
+            document.getElementById('bannerContainer').style.display = 'block';
+        } catch (e) {
+            console.error("랭킹 파싱 오류 발생, 기본 순서로 배너를 출력합니다.", e);
+            document.getElementById('title1').innerText = `🥇 1순위 추천 | ${hospitalData['코필러']}`;
+            document.getElementById('title2').innerText = `🥈 2순위 추천 | ${hospitalData['눈매교정']}`;
+            document.getElementById('title3').innerText = `🥉 3순위 추천 | ${hospitalData['윤곽주as']}`;
+            document.getElementById('bannerContainer').style.display = 'block';
+        }
+
+        document.getElementById('resetBtn').style.display = 'block';
+    }
+
+    function resetApp() {
+        base64Image = "";
+        document.getElementById('fileInput').value = ""; 
+        document.getElementById('preview').src = "";
+        document.getElementById('preview').style.display = 'none';
+        document.getElementById('finalPreview').src = ""; 
+        document.getElementById('placeholder').style.display = 'block';
+        
+        document.getElementById('uploadArea').style.display = 'flex';
+        document.getElementById('analyzeBtn').style.display = 'block';
+        document.getElementById('analyzeBtn').disabled = true; 
+        document.getElementById('resultBox').style.display = 'none';
+        document.getElementById('bannerContainer').style.display = 'none';
+        document.getElementById('resetBtn').style.display = 'none';
+    }
+</script>
+</body>
+</html>
